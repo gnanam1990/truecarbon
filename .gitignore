@@ -1,0 +1,4 @@
+out/ cache/ broadcast/ lib/forge-std/ lib/openzeppelin-contracts/
+node_modules/ dist/ coverage/
+.env !.env.example
+.vscode/ .idea/ .DS_Store
