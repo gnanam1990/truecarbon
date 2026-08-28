@@ -1,4 +1,20 @@
-out/ cache/ broadcast/ lib/forge-std/ lib/openzeppelin-contracts/
-node_modules/ dist/ coverage/
-.env !.env.example
-.vscode/ .idea/ .DS_Store
+# Foundry
+out/
+cache/
+broadcast/
+lib/forge-std/
+lib/openzeppelin-contracts/
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# Env
+.env
+!.env.example
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
