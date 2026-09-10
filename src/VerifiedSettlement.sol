@@ -98,6 +98,7 @@ contract VerifiedSettlement {
     function lockClaim(
         bytes32 claimId,
         address oracle,
+        address payee,
         uint96  amount,
         uint64  expiry
     ) external {
@@ -108,7 +109,7 @@ contract VerifiedSettlement {
 
         Claim storage c = claims[claimId];
         c.buyer = msg.sender;
-        c.payee = msg.sender; // single-claim: payee = buyer by default; can be set separately
+        c.payee = payee == address(0) ? msg.sender : payee;
         c.oracle = oracle;
         Tranche storage t = c.tranches.push();
         t.amount = amount;
@@ -116,7 +117,7 @@ contract VerifiedSettlement {
         t.oracle = oracle;
 
         usdc.safeTransferFrom(msg.sender, address(this), amount);
-        emit ClaimLocked(claimId, msg.sender, msg.sender, 1);
+        emit ClaimLocked(claimId, msg.sender, c.payee, 1);
     }
 
     function setPayee(bytes32 claimId, address payee) external {
@@ -133,6 +134,7 @@ contract VerifiedSettlement {
     function lockMilestoneClaim(
         bytes32 claimId,
         address oracle,
+        address payee,
         uint96[] calldata trancheAmounts,
         uint64[] calldata expiries
     ) external {
@@ -142,7 +144,7 @@ contract VerifiedSettlement {
 
         Claim storage c = claims[claimId];
         c.buyer = msg.sender;
-        c.payee = msg.sender;
+        c.payee = payee == address(0) ? msg.sender : payee;
         c.oracle = oracle;
         c.isMilestone = true;
 
@@ -158,7 +160,7 @@ contract VerifiedSettlement {
         }
 
         usdc.safeTransferFrom(msg.sender, address(this), total);
-        emit ClaimLocked(claimId, msg.sender, msg.sender, trancheAmounts.length);
+        emit ClaimLocked(claimId, msg.sender, c.payee, trancheAmounts.length);
     }
 
     // ------------------------------------------------------------------
@@ -212,6 +214,15 @@ contract VerifiedSettlement {
         Tranche storage t = c.tranches[trancheIndex];
         if (t.state != TrancheState.Locked) revert WrongState();
         if (block.timestamp <= t.expiry) revert ExpiryNotReached();
+
+        // Milestone invariant 4 (same as postAttestation):
+        // tranche N+1 requires tranche N resolved (Released or Refunded).
+        if (c.isMilestone && trancheIndex > 0) {
+            if (c.tranches[trancheIndex - 1].state != TrancheState.Released &&
+                c.tranches[trancheIndex - 1].state != TrancheState.Refunded) {
+                revert WrongState();
+            }
+        }
 
         t.state = TrancheState.Refunded;
         usdc.safeTransfer(c.buyer, t.amount);

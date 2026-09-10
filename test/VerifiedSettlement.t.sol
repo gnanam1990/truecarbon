@@ -53,7 +53,7 @@ contract VerifiedSettlementTest is Test {
 
     function test_invariant1_oracleAttestTrue_releases() public {
         vm.prank(buyer);
-        vs.lockClaim(CID, oracle, 200_000_000, uint64(block.timestamp + 30 days));
+        vs.lockClaim(CID, oracle, address(0), 200_000_000, uint64(block.timestamp + 30 days));
         vm.prank(buyer); vs.setPayee(CID, payee);
 
         uint256 payeeBefore = usdc.balanceOf(payee);
@@ -64,7 +64,7 @@ contract VerifiedSettlementTest is Test {
 
     function test_invariant1_attackerCannotRelease() public {
         vm.prank(buyer);
-        vs.lockClaim(CID, oracle, 200_000_000, uint64(block.timestamp + 30 days));
+        vs.lockClaim(CID, oracle, address(0), 200_000_000, uint64(block.timestamp + 30 days));
         vm.prank(buyer); vs.setPayee(CID, payee);
 
         vm.prank(attacker);
@@ -79,7 +79,7 @@ contract VerifiedSettlementTest is Test {
 
     function test_invariant2_oracleAttestFalse_refunds() public {
         vm.prank(buyer);
-        vs.lockClaim(CID, oracle, 200_000_000, uint64(block.timestamp + 30 days));
+        vs.lockClaim(CID, oracle, address(0), 200_000_000, uint64(block.timestamp + 30 days));
 
         uint256 buyerBefore = usdc.balanceOf(buyer);
         vm.prank(oracle);
@@ -94,7 +94,7 @@ contract VerifiedSettlementTest is Test {
 
     function test_invariant3_refundExpired() public {
         vm.prank(buyer);
-        vs.lockClaim(CID, oracle, 200_000_000, uint64(block.timestamp + 30 days));
+        vs.lockClaim(CID, oracle, address(0), 200_000_000, uint64(block.timestamp + 30 days));
 
         vm.warp(block.timestamp + 31 days);
         uint256 buyerBefore = usdc.balanceOf(buyer);
@@ -104,7 +104,7 @@ contract VerifiedSettlementTest is Test {
 
     function test_invariant3_attestAfterExpiry_reverts() public {
         vm.prank(buyer);
-        vs.lockClaim(CID, oracle, 200_000_000, uint64(block.timestamp + 30 days));
+        vs.lockClaim(CID, oracle, address(0), 200_000_000, uint64(block.timestamp + 30 days));
         vm.warp(block.timestamp + 31 days);
         vm.prank(oracle);
         vm.expectRevert(VerifiedSettlement.ExpiryNotReached.selector);
@@ -123,7 +123,7 @@ contract VerifiedSettlementTest is Test {
         exps[1] = uint64(block.timestamp + 60 days);
 
         vm.prank(buyer);
-        vs.lockMilestoneClaim(CID, oracle, amts, exps);
+        vs.lockMilestoneClaim(CID, oracle, address(0), amts, exps);
 
         // Attest tranche 1 before tranche 0 — must revert.
         vm.prank(oracle);
@@ -139,7 +139,7 @@ contract VerifiedSettlementTest is Test {
         exps[1] = uint64(block.timestamp + 60 days);
 
         vm.prank(buyer);
-        vs.lockMilestoneClaim(CID, oracle, amts, exps);
+        vs.lockMilestoneClaim(CID, oracle, address(0), amts, exps);
         vm.prank(buyer); vs.setPayee(CID, payee);
 
         // Attest tranche 0 true → release.
@@ -162,7 +162,7 @@ contract VerifiedSettlementTest is Test {
         exps[1] = uint64(block.timestamp + 60 days);
 
         vm.prank(buyer);
-        vs.lockMilestoneClaim(CID, oracle, amts, exps);
+        vs.lockMilestoneClaim(CID, oracle, address(0), amts, exps);
 
         // Tranche 0 fails → refund. Tranche 1 should still be reachable.
         vm.prank(oracle);
@@ -181,7 +181,7 @@ contract VerifiedSettlementTest is Test {
 
     function test_invariant5_singleRelease() public {
         vm.prank(buyer);
-        vs.lockClaim(CID, oracle, 200_000_000, uint64(block.timestamp + 30 days));
+        vs.lockClaim(CID, oracle, address(0), 200_000_000, uint64(block.timestamp + 30 days));
         vm.prank(buyer); vs.setPayee(CID, payee);
         uint256 payeeBefore = usdc.balanceOf(payee);
 
@@ -194,7 +194,7 @@ contract VerifiedSettlementTest is Test {
 
     function test_invariant5_singleRefund() public {
         vm.prank(buyer);
-        vs.lockClaim(CID, oracle, 200_000_000, uint64(block.timestamp + 30 days));
+        vs.lockClaim(CID, oracle, address(0), 200_000_000, uint64(block.timestamp + 30 days));
         uint256 buyerBefore = usdc.balanceOf(buyer);
 
         vm.warp(block.timestamp + 31 days);
@@ -211,13 +211,98 @@ contract VerifiedSettlementTest is Test {
     function test_zeroAmount_reverts() public {
         vm.prank(buyer);
         vm.expectRevert(VerifiedSettlement.ZeroAmount.selector);
-        vs.lockClaim(CID, oracle, 0, uint64(block.timestamp + 1 days));
+        vs.lockClaim(CID, oracle, address(0), 0, uint64(block.timestamp + 1 days));
     }
 
     function test_pastExpiry_reverts() public {
         vm.prank(buyer);
         vm.expectRevert(VerifiedSettlement.ExpiryMustBeFuture.selector);
-        vs.lockClaim(CID, oracle, 100, uint64(block.timestamp));
+        vs.lockClaim(CID, oracle, address(0), 100, uint64(block.timestamp));
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase-2: payee param (explicit payee, zero defaults to buyer)
+    // -----------------------------------------------------------------------
+
+    function test_payeeParam_explicitPayee_releasesToPayee() public {
+        vm.prank(buyer);
+        vs.lockClaim(CID, oracle, payee, 200_000_000, uint64(block.timestamp + 30 days));
+
+        VerifiedSettlement.Claim memory c = vs.getClaim(CID);
+        assertEq(c.payee, payee, "payee not set from param");
+        assertEq(c.buyer, buyer, "buyer mismatch");
+
+        uint256 payeeBefore = usdc.balanceOf(payee);
+        vm.prank(oracle);
+        vs.postAttestation(CID, 0, true);
+        assertEq(usdc.balanceOf(payee), payeeBefore + 200_000_000);
+    }
+
+    function test_payeeParam_zeroDefaultsToBuyer() public {
+        vm.prank(buyer);
+        vs.lockClaim(CID, oracle, address(0), 200_000_000, uint64(block.timestamp + 30 days));
+
+        VerifiedSettlement.Claim memory c = vs.getClaim(CID);
+        assertEq(c.payee, buyer, "zero payee should default to buyer");
+    }
+
+    function test_milestonePayeeParam_explicitPayee() public {
+        uint96[] memory amts = new uint96[](2);
+        amts[0] = 100_000_000; amts[1] = 100_000_000;
+        uint64[] memory exps = new uint64[](2);
+        exps[0] = uint64(block.timestamp + 30 days);
+        exps[1] = uint64(block.timestamp + 60 days);
+
+        vm.prank(buyer);
+        vs.lockMilestoneClaim(CID, oracle, payee, amts, exps);
+
+        VerifiedSettlement.Claim memory c = vs.getClaim(CID);
+        assertEq(c.payee, payee, "milestone payee not set from param");
+
+        uint256 payeeBefore = usdc.balanceOf(payee);
+        vm.prank(oracle);
+        vs.postAttestation(CID, 0, true);
+        assertEq(usdc.balanceOf(payee), payeeBefore + 100_000_000);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase-2: refundExpired milestone ordering (N-1 must be resolved)
+    // -----------------------------------------------------------------------
+
+    function test_refundExpired_ordering_reverts() public {
+        uint96[] memory amts = new uint96[](2);
+        amts[0] = 100_000_000; amts[1] = 100_000_000;
+        uint64[] memory exps = new uint64[](2);
+        exps[0] = uint64(block.timestamp + 30 days);
+        exps[1] = uint64(block.timestamp + 31 days);
+
+        vm.prank(buyer);
+        vs.lockMilestoneClaim(CID, oracle, address(0), amts, exps);
+
+        // Both tranches expired, but tranche 0 is still Locked.
+        vm.warp(block.timestamp + 32 days);
+        vm.expectRevert(VerifiedSettlement.WrongState.selector);
+        vs.refundExpired(CID, 1);
+    }
+
+    function test_refundExpired_ordering_passesAfterResolve() public {
+        uint96[] memory amts = new uint96[](2);
+        amts[0] = 100_000_000; amts[1] = 100_000_000;
+        uint64[] memory exps = new uint64[](2);
+        exps[0] = uint64(block.timestamp + 30 days);
+        exps[1] = uint64(block.timestamp + 60 days);
+
+        vm.prank(buyer);
+        vs.lockMilestoneClaim(CID, oracle, address(0), amts, exps);
+
+        // Resolve tranche 0 first (refund path), then expiry-refund tranche 1.
+        vm.prank(oracle);
+        vs.postAttestation(CID, 0, false);
+
+        vm.warp(block.timestamp + 61 days);
+        uint256 buyerBefore = usdc.balanceOf(buyer);
+        vs.refundExpired(CID, 1);
+        assertEq(usdc.balanceOf(buyer), buyerBefore + 100_000_000);
     }
 
     // -----------------------------------------------------------------------
@@ -234,7 +319,7 @@ contract VerifiedSettlementTest is Test {
         uint96 amt = 100_000_000;
 
         vm.prank(buyer);
-        vs.lockClaim(CID, oracle, amt, uint64(block.timestamp + 30 days));
+        vs.lockClaim(CID, oracle, address(0), amt, uint64(block.timestamp + 30 days));
         vm.prank(buyer); vs.setPayee(CID, payee);
 
         uint256 buyerBefore = usdc.balanceOf(buyer);
